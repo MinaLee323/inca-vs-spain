@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>잉카 원주민 vs 스페인군 모션 달리기 대결</title>
+    <!-- TensorFlow.js & Pose Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome & Canvas Confetti -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+
+        .font-jua {
+            font-family: 'Jua', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #1e293b;
+        }
+
+        /* Fullscreen Video Background */
+        #video-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: -2;
+            opacity: 0.85;
+            filter: brightness(0.9);
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            transform: scaleX(-1);
+            z-index: -1;
+        }
+
+        /* Animated character bounce */
+        .running-animation {
+            animation: bounce 0.25s infinite alternate;
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(-50%) scale(1); }
+            to { transform: translateY(-65%) scale(1.15) rotate(5deg); }
+        }
+
+        /* Pulse Countdown Animation */
+        @keyframes pulseCount {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        .animate-count {
+            animation: pulseCount 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .gold-glow {
+            box-shadow: 0 0 25px rgba(245, 158, 11, 0.6);
+        }
+
+        .crimson-glow {
+            box-shadow: 0 0 25px rgba(225, 29, 72, 0.6);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative overflow-hidden select-none">
+
+    <video id="video" autoplay playsinline class="hidden"></video>
+    <video id="video-background" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <!-- LOADING SCREEN -->
+    <div id="loading" class="fixed inset-0 bg-slate-900/90 z-50 flex flex-col items-center justify-center text-white backdrop-blur-md">
+        <div class="w-20 h-20 border-8 border-amber-400 border-t-transparent rounded-full animate-spin mb-6"></div>
+        <h2 class="text-3xl font-jua text-amber-300 mb-2">☀️ 잉카 vs 스페인 달리기 AI 준비 중...</h2>
+        <p class="text-slate-300 text-lg">카메라 권한을 허용하고 인공지능 모션 모델을 불러오고 있습니다.</p>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app-container" class="relative z-10 flex flex-col h-full justify-between p-4 max-w-7xl mx-auto">
+        
+        <!-- HEADER / TOP BAR -->
+        <header class="bg-slate-900/80 border-2 border-amber-500/50 rounded-2xl p-3 px-6 shadow-2xl backdrop-blur-md flex items-center justify-between text-white">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">☀️</span>
+                <div>
+                    <h1 class="font-jua text-2xl md:text-3xl text-amber-400 leading-tight">잉카 원주민 vs 스페인군 달리기 대결</h1>
+                    <p class="text-xs md:text-sm text-slate-300">제자리 달리기로 캐릭터를 골인 지점까지 전속력으로 이동시키세요!</p>
+                </div>
+            </div>
+
+            <!-- Top Status Badges -->
+            <div class="flex items-center gap-4">
+                <div id="top-p1-badge" class="flex items-center gap-2 bg-amber-500/20 border border-amber-400/50 px-3 py-1.5 rounded-xl">
+                    <span id="top-p1-emoji" class="text-2xl">🦙</span>
+                    <div class="text-xs">
+                        <div class="font-bold text-amber-300" id="top-p1-title">P1: 잉카 원주민</div>
+                        <div class="text-slate-200" id="top-p1-dist">0% (0m)</div>
+                    </div>
+                </div>
+
+                <div class="font-jua text-2xl text-amber-400">VS</div>
+
+                <div id="top-p2-badge" class="flex items-center gap-2 bg-rose-500/20 border border-rose-400/50 px-3 py-1.5 rounded-xl">
+                    <span id="top-p2-emoji" class="text-2xl">💂‍♂️</span>
+                    <div class="text-xs">
+                        <div class="font-bold text-rose-300" id="top-p2-title">P2: 스페인군</div>
+                        <div class="text-slate-200" id="top-p2-dist">0% (0m)</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- RACE TRACK -->
+        <div id="race-track" class="relative bg-gradient-to-r from-amber-950/80 via-amber-800/80 to-amber-950/80 border-4 border-amber-400 rounded-3xl p-4 mt-auto mb-2 shadow-2xl backdrop-blur-sm overflow-hidden h-44 md:h-52 flex flex-col justify-between">
+            <!-- Track Lanes lines -->
+            <div class="absolute inset-0 flex flex-col justify-evenly pointer-events-none opacity-20">
+                <div class="border-b-2 border-dashed border-amber-200 w-full"></div>
+                <div class="border-b-2 border-dashed border-amber-200 w-full"></div>
+            </div>
+
+            <!-- Finish Line Flag -->
+            <div class="absolute right-6 top-0 bottom-0 w-12 bg-amber-300/30 border-l-4 border-r-4 border-amber-400/80 flex flex-col justify-around items-center z-0">
+                <span class="text-2xl">🏁</span>
+                <span class="text-xl">🏁</span>
+                <span class="text-2xl">🏁</span>
+            </div>
+
+            <!-- PLAYER 1 LANE -->
+            <div class="relative h-1/2 flex items-center border-b border-amber-500/30 pr-16">
+                <!-- Label Left -->
+                <div class="absolute left-2 top-1 bg-amber-600 text-white font-jua text-xs px-2.5 py-0.5 rounded-full shadow flex items-center gap-1 z-10">
+                    <span id="p1-lane-emoji">🦙</span>
+                    <span id="p1-lane-name">Player 1 (잉카 원주민)</span>
+                </div>
+                <!-- Character Avatar -->
+                <div id="player1-char" class="absolute left-2 text-3xl md:text-4xl transition-all duration-100 ease-out z-20 flex items-center justify-center bg-amber-400/80 p-1.5 rounded-full border-2 border-white shadow-xl gold-glow" style="left: 2%;">
+                    <span id="p1-char-icon">🦙</span>
+                </div>
+            </div>
+
+            <!-- PLAYER 2 LANE -->
+            <div class="relative h-1/2 flex items-center pr-16">
+                <!-- Label Left -->
+                <div class="absolute left-2 top-1 bg-rose-600 text-white font-jua text-xs px-2.5 py-0.5 rounded-full shadow flex items-center gap-1 z-10">
+                    <span id="p2-lane-emoji">💂‍♂️</span>
+                    <span id="p2-lane-name">Player 2 (스페인군)</span>
+                </div>
+                <!-- Character Avatar -->
+                <div id="player2-char" class="absolute left-2 text-3xl md:text-4xl transition-all duration-100 ease-out z-20 flex items-center justify-center bg-rose-500/80 p-1.5 rounded-full border-2 border-white shadow-xl crimson-glow" style="left: 2%;">
+                    <span id="p2-char-icon">💂‍♂️</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- START & CHARACTER SELECTION PANEL (MODAL) -->
+        <div id="character-select-modal" class="bg-slate-900/95 border-4 border-amber-400 rounded-3xl p-6 md:p-8 max-w-3xl mx-auto w-full shadow-2xl text-white backdrop-blur-lg">
+            <h2 class="font-jua text-3xl text-amber-400 text-center mb-2">⚔️ 출전 캐릭터를 선택하세요!</h2>
+            <p class="text-center text-slate-300 text-sm mb-6">친구와 함께 잉카 원주민과 스페인군 캐릭터를 하나씩 골라 대결해 보세요.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <!-- PLAYER 1 SELECTION -->
+                <div class="bg-amber-950/50 border-2 border-amber-500/60 rounded-2xl p-4 flex flex-col items-center">
+                    <div class="font-jua text-xl text-amber-300 mb-3 flex items-center gap-2">
+                        <span class="bg-amber-500 text-slate-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold">1</span>
+                        Player 1 (카메라 왼쪽)
+                    </div>
+                    
+                    <!-- Selected Character Display -->
+                    <div class="text-6xl my-2 bg-amber-400/20 p-4 rounded-2xl border border-amber-400/40" id="p1-select-preview">
+                        🦙
+                    </div>
+                    <div id="p1-select-title" class="font-jua text-lg text-amber-200 mb-4">잉카 라마 전사 (잉카)</div>
+
+                    <!-- Role Options for P1 -->
+                    <div class="grid grid-cols-2 gap-2 w-full">
+                        <button onclick="selectCharacter(1, 'inca_llama')" class="p1-choice-btn bg-amber-600 hover:bg-amber-500 border-2 border-amber-300 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🦙</span> 잉카 라마
+                        </button>
+                        <button onclick="selectCharacter(1, 'inca_warrior')" class="p1-choice-btn bg-slate-800 hover:bg-amber-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🪶</span> 잉카 영웅
+                        </button>
+                        <button onclick="selectCharacter(1, 'spanish_knight')" class="p1-choice-btn bg-slate-800 hover:bg-rose-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>💂‍♂️</span> 스페인 기사
+                        </button>
+                        <button onclick="selectCharacter(1, 'spanish_captain')" class="p1-choice-btn bg-slate-800 hover:bg-rose-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🛡️</span> 스페인 정복자
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PLAYER 2 SELECTION -->
+                <div class="bg-rose-950/50 border-2 border-rose-500/60 rounded-2xl p-4 flex flex-col items-center">
+                    <div class="font-jua text-xl text-rose-300 mb-3 flex items-center gap-2">
+                        <span class="bg-rose-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                        Player 2 (카메라 오른쪽)
+                    </div>
+                    
+                    <!-- Selected Character Display -->
+                    <div class="text-6xl my-2 bg-rose-500/20 p-4 rounded-2xl border border-rose-400/40" id="p2-select-preview">
+                        💂‍♂️
+                    </div>
+                    <div id="p2-select-title" class="font-jua text-lg text-rose-200 mb-4">스페인 정복 기사 (스페인)</div>
+
+                    <!-- Role Options for P2 -->
+                    <div class="grid grid-cols-2 gap-2 w-full">
+                        <button onclick="selectCharacter(2, 'spanish_knight')" class="p2-choice-btn bg-rose-600 hover:bg-rose-500 border-2 border-rose-300 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>💂‍♂️</span> 스페인 기사
+                        </button>
+                        <button onclick="selectCharacter(2, 'spanish_captain')" class="p2-choice-btn bg-slate-800 hover:bg-rose-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🛡️</span> 스페인 정복자
+                        </button>
+                        <button onclick="selectCharacter(2, 'inca_llama')" class="p2-choice-btn bg-slate-800 hover:bg-amber-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🦙</span> 잉카 라마
+                        </button>
+                        <button onclick="selectCharacter(2, 'inca_warrior')" class="p2-choice-btn bg-slate-800 hover:bg-amber-700 border border-slate-600 rounded-xl p-2 text-xs font-bold transition flex items-center justify-center gap-1">
+                            <span>🪶</span> 잉카 영웅
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Row -->
+            <div class="flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-800/80 p-3 px-5 rounded-2xl mb-6 border border-slate-700">
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <label for="camera-select" class="text-xs font-bold text-amber-300 whitespace-nowrap">📷 카메라:</label>
+                    <select id="camera-select" class="bg-slate-900 border border-amber-500/50 text-white text-xs rounded-lg p-2 w-full sm:w-60 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <option value="">카메라 불러오는 중...</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <label for="distance-select" class="text-xs font-bold text-amber-300 whitespace-nowrap">🏃 승리 거리:</label>
+                    <select id="distance-select" class="bg-slate-900 border border-amber-500/50 text-white text-xs rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <option value="100">100m (단거리 스프린트)</option>
+                        <option value="200" selected>200m (표준 정복전)</option>
+                        <option value="300">300m (장거리 장렬한 레이스)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- START BUTTON -->
+            <button id="start-button" class="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-jua text-2xl py-4 rounded-2xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 border-2 border-white">
+                <i class="fa-solid fa-play"></i> 잉카 vs 스페인 달리기 시작하기!
+            </button>
+        </div>
+
+        <!-- MOTION CHECK OVERLAY (5 Secs Preview) -->
+        <div id="motion-check-overlay" class="fixed top-24 left-1/2 -translate-x-1/2 bg-slate-900/90 border-2 border-amber-400 rounded-2xl p-4 text-center text-white shadow-2xl z-40 hidden backdrop-blur-md max-w-md w-11/12">
+            <div class="font-jua text-amber-300 text-xl mb-1 flex items-center justify-center gap-2">
+                <span class="text-2xl animate-pulse">📷</span> 모션 인식 확인 중... (<span id="preview-timer-num" class="text-amber-400 text-3xl font-bold">5</span>초)
+            </div>
+            <p class="text-xs text-slate-200">
+                P1(왼쪽)과 P2(오른쪽)에 서서 감지 라인이 잘 표시되는지 확인하세요!
+            </p>
+        </div>
+
+        <!-- COUNTDOWN OVERLAY -->
+        <div id="countdown" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-jua text-9xl text-amber-300 drop-shadow-[0_10px_10px_rgba(0,0,0,0.9)] z-50 pointer-events-none hidden">
+            3
+        </div>
+
+        <!-- WINNER BANNER MODAL -->
+        <div id="winner-banner" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/95 border-4 border-amber-400 rounded-3xl p-8 max-w-lg w-11/12 text-center shadow-2xl z-50 hidden backdrop-blur-xl">
+            <div id="winner-emoji" class="text-7xl mb-4 animate-bounce">🏆</div>
+            <h2 id="winner-text" class="font-jua text-4xl text-amber-300 mb-2">플레이어 1 승리!</h2>
+            <p id="winner-sub" class="text-slate-300 text-base mb-6">잉카 제국의 신속한 라마 전사가 승리했습니다!</p>
+            <button id="restart-button" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-jua text-2xl px-8 py-3 rounded-2xl border-2 border-white shadow-lg transition transform active:scale-95">
+                🔄 대결 다시 하기
+            </button>
+        </div>
+
+        <!-- Floating Reset Button during game -->
+        <button id="reset-button" class="fixed bottom-4 right-4 bg-slate-900/90 text-amber-400 border-2 border-amber-400/80 hover:bg-amber-500 hover:text-slate-950 font-jua px-4 py-2 rounded-xl shadow-lg transition z-40 hidden flex items-center gap-2 text-sm">
+            <span>🔄</span> 위치/게임 리셋
+        </button>
+    </div>
+
+    <script>
+        // State variables
+        let selectedP1 = 'inca_llama';
+        let selectedP2 = 'spanish_knight';
+
+        let detector;
+        let video;
+        let canvas;
+        let ctx;
+        let gameState = 'IDLE'; // 'IDLE', 'PREVIEW', 'COUNTDOWN', 'RACING', 'FINISHED'
+        let targetDistance = 200; // default 200m
+
+        let player1Score = 0; // 0 to targetDistance
+        let player2Score = 0;
+
+        let player1LastY = {};
+        let player2LastY = {};
+        let animationFrameId;
+
+        // Sound generator (Web Audio API)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playBeep(freq = 440, type = 'sine', duration = 0.15) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) { console.log(e); }
+        }
+
+        function playVictorySound() {
+            const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
+            notes.forEach((note, index) => {
+                setTimeout(() => playBeep(note, 'triangle', 0.25), index * 120);
+            });
+        }
+
+        async function gameLoop() {
+            if (gameState === 'IDLE' || gameState === 'FINISHED') return;
+
+            if (detector && video.readyState >= 2) {
+                const poses = await detector.estimatePoses(video);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (poses && poses.length > 0) {
+                    // Sort detected people from left to right (X center)
+                    const sortedPoses = poses.map(pose => {
+                        const validPts = pose.keypoints.filter(k => k.score > 0.3);
+                        const avgX = validPts.length > 0 
+                            ? validPts.reduce((acc, p) => acc + p.x, 0) / validPts.length 
+                            : canvas.width / 2;
+                        return { pose, avgX };
+                    }).sort((a, b) => a.avgX - b.avgX);
+
+                    // P1 is left-most person in camera, P2 is right-most
+                    const p1PoseData = sortedPoses[0]?.pose;
+                    const p2PoseData = sortedPoses.length > 1 ? sortedPoses[1]?.pose : null;
+
+                    // Draw & Calculate speed for Player 1
+                    if (p1PoseData) {
+                        drawSkeleton(p1PoseData.keypoints, '#f59e0b', 'P1 (왼쪽)');
+                        if (gameState === 'RACING') {
+                            const speed1 = calculateMovementSpeed(p1PoseData.keypoints, player1LastY);
+                            if (speed1 > 0) {
+                                player1Score += speed1;
+                                triggerBounceAnimation('player1-char');
+                            }
+                        }
+                    }
+
+                    // Draw & Calculate speed for Player 2
+                    if (p2PoseData) {
+                        drawSkeleton(p2PoseData.keypoints, '#e11d48', 'P2 (오른쪽)');
+                        if (gameState === 'RACING') {
+                            const speed2 = calculateMovementSpeed(p2PoseData.keypoints, player2LastY);
+                            if (speed2 > 0) {
+                                player2Score += speed2;
+                                triggerBounceAnimation('player2-char');
+                            }
+                        }
+                    }
+                }
+
+                if (gameState === 'RACING') {
+                    updatePositions();
+                    checkWinner();
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function drawSkeleton(keypoints, color, labelText) {
+            ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+
+            const adjacentPairs = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
+            adjacentPairs.forEach(([i, j]) => {
+                const kp1 = keypoints[i];
+                const kp2 = keypoints[j];
+                if (kp1.score > 0.3 && kp2.score > 0.3) {
+                    ctx.beginPath();
+                    ctx.moveTo(kp1.x, kp1.y);
+                    ctx.lineTo(kp2.x, kp2.y);
+                    ctx.stroke();
+                }
+            });
+
+            let headX = null;
+            let headY = null;
+
+            keypoints.forEach(kp => {
+                if (kp.score > 0.3) {
+                    ctx.beginPath();
+                    ctx.arc(kp.x, kp.y, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    if (kp.name === 'nose') {
+                        headX = kp.x;
+                        headY = kp.y;
+                    }
+                }
+            });
+
+            // Draw player badge label above detected head
+            if (headX !== null && headY !== null && labelText) {
+                ctx.font = 'bold 20px "Noto Sans KR", sans-serif';
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 4;
+                ctx.strokeText(labelText, headX - 35, headY - 25);
+                ctx.fillText(labelText, headX - 35, headY - 25);
+            }
+        }
+
+        function checkWinner() {
+            if (player1Score >= targetDistance || player2Score >= targetDistance) {
+                gameState = 'FINISHED';
+                cancelAnimationFrame(animationFrameId);
+
+                const isP1Win = player1Score >= player2Score;
+                const winnerChar = isP1Win ? CHARACTERS[selectedP1] : CHARACTERS[selectedP2];
+                const winnerPlayerNum = isP1Win ? 'Player 1' : 'Player 2';
+
+                playVictorySound();
+
+                // Trigger celebration confetti
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+
+                document.getElementById('winner-emoji').textContent = winnerChar.emoji;
+                document.getElementById('winner-text').textContent = `${winnerPlayerNum} (${winnerChar.name}) 승리! 🎉`;
+                document.getElementById('winner-sub').textContent = `${winnerChar.group}의 훌륭한 정복 승리입니다!`;
+
+                document.getElementById('winner-banner').classList.remove('hidden');
+                document.getElementById('reset-button').classList.add('hidden');
+            }
+        }
+
+        function startGameSequence() {
+            document.getElementById('character-select-modal').classList.add('hidden');
+            document.getElementById('reset-button').classList.remove('hidden');
+
+            targetDistance = parseInt(document.getElementById('distance-select').value) || 200;
+            player1Score = 0;
+            player2Score = 0;
+            updatePositions();
+
+            // PHASE 1: Motion Recognition Preview (5 seconds)
+            gameState = 'PREVIEW';
+            gameLoop(); // Start continuous pose tracking
+
+            const checkOverlay = document.getElementById('motion-check-overlay');
+            const previewNum = document.getElementById('preview-timer-num');
+            checkOverlay.classList.remove('hidden');
+
+            let previewSecs = 5;
+            previewNum.textContent = previewSecs;
+            playBeep(440, 'sine', 0.1);
+
+            const previewTimer = setInterval(() => {
+                previewSecs--;
+                if (previewSecs > 0) {
+                    previewNum.textContent = previewSecs;
+                    playBeep(440, 'sine', 0.1);
+                } else {
+                    clearInterval(previewTimer);
+                    checkOverlay.classList.add('hidden');
+
+                    // PHASE 2: 3-2-1 Countdown
+                    startRaceCountdown();
+                }
+            }, 1000);
+        }
+
+        function startRaceCountdown() {
+            gameState = 'COUNTDOWN';
+            const countdownEl = document.getElementById('countdown');
+            countdownEl.classList.remove('hidden');
+
+            let count = 3;
+            countdownEl.textContent = count;
+            playBeep(523.25, 'sine', 0.2);
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                    countdownEl.classList.remove('animate-count');
+                    void countdownEl.offsetWidth; // trigger reflow
+                    countdownEl.classList.add('animate-count');
+                    playBeep(523.25, 'sine', 0.2);
+                } else if (count === 0) {
+                    countdownEl.textContent = '출발! 🏃‍♂️';
+                    playBeep(783.99, 'triangle', 0.4);
+                } else {
+                    clearInterval(timer);
+                    countdownEl.classList.add('hidden');
+                    // PHASE 3: Actual Race Starts
+                    gameState = 'RACING';
+                }
+            }, 1000);
+        }
+
+        function resetGame() {
+            gameState = 'IDLE';
+            cancelAnimationFrame(animationFrameId);
+            player1Score = 0;
+            player2Score = 0;
+            updatePositions();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            document.getElementById('motion-check-overlay').classList.add('hidden');
+            document.getElementById('countdown').classList.add('hidden');
+            document.getElementById('winner-banner').classList.add('hidden');
+            document.getElementById('character-select-modal').classList.remove('hidden');
+            document.getElementById('reset-button').classList.add('hidden');
+        }
+
+        // EVENT LISTENERS
+        document.getElementById('start-button').addEventListener('click', startGameSequence);
+        document.getElementById('restart-button').addEventListener('click', resetGame);
+        document.getElementById('reset-button').addEventListener('click', resetGame);
+
+        // INITIALIZATION
+        window.addEventListener('load', async () => {
+            updateTrackUI();
+            await setupCamera();
+            await loadModel();
+        });
+    </script>
+</body>
+</html>
